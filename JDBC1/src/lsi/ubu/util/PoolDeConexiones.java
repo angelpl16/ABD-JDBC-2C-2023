@@ -42,7 +42,7 @@ public class PoolDeConexiones {
 	
 	// Tip: si hay problemas de conexi�n, comprueba que en la BD el password est� en min�sculas,
 	// prueba desde SQL*Plus o SQLDeveloper que efectivamente puedes conectarte con hr/hr.
-	private static final String PASSWORD = "hr"; 
+	private static final String PASSWORD = "HR"; 
 	
 	/** Pool de conexiones. */
 	private static PoolDeConexiones poolDeConexiones;

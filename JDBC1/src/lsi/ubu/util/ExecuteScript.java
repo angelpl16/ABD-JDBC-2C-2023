@@ -46,10 +46,10 @@ public class ExecuteScript {
 			if (OS.indexOf("nux") >= 0) {
 				
 				String sqlLauncher ="sql/lanza_sqlplus.sh";	
-				p = Runtime.getRuntime().exec(new String[]{sqlLauncher,"hr/hr","@"+file_name});
+				p = Runtime.getRuntime().exec(new String[]{sqlLauncher,"hr/HR","@"+file_name});
 				
 			} else if (OS.indexOf("win") >= 0) { //if is windows
-				p = Runtime.getRuntime().exec("sqlplus hr/hr @" + file_name);
+				p = Runtime.getRuntime().exec("sqlplus hr/HR @" + file_name);
 			} else
 				throw (new Exception("lsi.ubu.util.ExecuteScript.java"
 						+ " Sistema operativo incompatible"));
