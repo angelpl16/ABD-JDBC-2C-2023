@@ -51,25 +51,25 @@ public class GestionMedicos {
 
 		try {
 			ResultSet resultSet;
-			
-			//Comprobamos si existen medicos
+
+			// Comprobamos si existen medicos
 			PreparedStatement select_medico = con.prepareStatement("SELECT COUNT(*) FROM medico WHERE NIF = ?");
 			select_medico.setString(1, m_NIF_medico);
 			resultSet = select_medico.executeQuery();
-			//System.out.println(resultSet.next());
+			// System.out.println(resultSet.next());
 			if (!resultSet.next()) {
 				throw new GestionMedicosException(2);
 			}
 			resultSet.close();
 			select_medico.close();
-			
+
 			// Sacar id_medico para eliminar registros de tabla consultas
 			String sqlMedico = "SELECT id_medico FROM medico WHERE NIF = ?";
 			PreparedStatement sacaId = con.prepareStatement(sqlMedico);
 			sacaId.setString(1, m_NIF_medico);
 			resultSet = sacaId.executeQuery();
-			
-			//Comprobamos si existe la consulta
+
+			// Comprobamos si existe la consulta
 			PreparedStatement select_consulta = con
 					.prepareStatement("SELECT COUNT(*) FROM medico WHERE id_medico = ? and fecha_consulta = ?");
 			select_consulta.setString(1, resultSet.getString(1));
@@ -78,17 +78,18 @@ public class GestionMedicos {
 			if (resultSet1.next()) {
 				throw new GestionMedicosException(3);
 			}
-			
+
 			resultSet.close();
 			resultSet1.close();
-			
+
 			String sqlPaciente = "SELECT COUNT(*) FROM cliente WHERE NIF = ?";
 			PreparedStatement compruebaPaciente = con.prepareStatement(sqlPaciente);
-			ResultSet resultSet2 = compruebaPaciente.executeQuery();	
-			
-			if (!resultSet2.next()) {
+			resultSet = compruebaPaciente.executeQuery();
+
+			if (!resultSet.next()) {
 				throw new GestionMedicosException(1);
 			}
+			resultSet.close();
 
 			insert_linea = con.prepareStatement("INSERT INTO consulta values (sec_id_consulta.nextVal,?,?,?)");
 			insert_linea.setDate(1, m_sqlFecha_Consulta);
@@ -126,7 +127,7 @@ public class GestionMedicos {
 	}
 
 	public static void anular_consulta(String m_NIF_cliente, String m_NIF_medico, Date m_Fecha_Consulta,
-			Date m_Fecha_Anulacion, String motivo) throws SQLException {
+			Date m_Fecha_Anulacion) throws SQLException {
 
 		PoolDeConexiones pool = PoolDeConexiones.getInstance();
 		Connection con = null;
@@ -142,13 +143,35 @@ public class GestionMedicos {
 		try {
 			con = pool.getConnection();
 
+			ResultSet resultSet;
+			
+			//Comprobamos si existe paciente
+			
+			String sqlPaciente = "SELECT COUNT(*) FROM cliente WHERE NIF = ?";
+			PreparedStatement compruebaPaciente = con.prepareStatement(sqlPaciente);
+			resultSet = compruebaPaciente.executeQuery();
+
+			if (!resultSet.next()) {
+				throw new GestionMedicosException(1);
+			}
+			resultSet.close();
+
+			// Comprobamos si existen medicos
+			PreparedStatement select_medico = con.prepareStatement("SELECT COUNT(*) FROM medico WHERE NIF = ?");
+			select_medico.setString(1, m_NIF_medico);
+			resultSet = select_medico.executeQuery();
+			// System.out.println(resultSet.next());
+			if (!resultSet.next()) {
+				throw new GestionMedicosException(2);
+			}
+
 			select_idmed = con.prepareStatement("select id_medico from medico where NIF = ?");
 
 			select_idmed.setString(1, m_NIF_medico);
 
 			res1 = select_idmed.executeQuery();
 
-			int id_medico = res1.getInt("id_medico");
+			int id_medico = res1.getInt(1);
 			// Comprobamos si existe la consulta
 
 			select_linea = con.prepareStatement(
@@ -161,9 +184,9 @@ public class GestionMedicos {
 
 			int id_consulta = -1;
 			if (res2.next()) {
-				id_consulta = res2.getInt("id_consulta");
+				id_consulta = res2.getInt(1);
 			} else {
-				throw new SQLException("No se encontro consulta");
+				throw new GestionMedicosException(GestionMedicosException.CONSULTA_NO_EXISTE);
 
 			}
 
@@ -171,16 +194,15 @@ public class GestionMedicos {
 			long difdias = m_Fecha_Consulta.getTime() - m_Fecha_Anulacion.getTime();
 			long dias = TimeUnit.DAYS.convert(difdias, TimeUnit.MILLISECONDS);
 			if (dias < 2) {
-				throw new SQLException("Quedan menos de 2 días para la consulta");
+				throw new GestionMedicosException(GestionMedicosException.CONSULTA_NO_ANULA);
 			}
 
 			// Insertar en tabla de anulación
 
 			insert_linea = con.prepareStatement(
-					"INSERT INTO anulacion (motivo_anulacion, fecha_anulacion, id_consulta) VALUES (?, ?, ?)");
-			insert_linea.setString(1, motivo);
-			insert_linea.setDate(2, (java.sql.Date) m_Fecha_Anulacion);
-			insert_linea.setInt(3, id_consulta);
+					"INSERT INTO anulacion (id_anulacion,fecha_anulacion, id_consulta) VALUES (sec_id_anulacion.nextVal,?, ?)");
+			insert_linea.setDate(1, (java.sql.Date) m_Fecha_Anulacion);
+			insert_linea.setInt(2, id_consulta);
 
 			insert_linea.executeQuery();
 
@@ -198,8 +220,9 @@ public class GestionMedicos {
 				con.rollback();
 			}
 
-			logger.error(e.getMessage());
-			throw e;
+			if (e instanceof GestionMedicosException) {
+				throw (GestionMedicosException) e;
+			}
 
 		} finally {
 			if (res1 != null || res2 != null) {
@@ -237,8 +260,20 @@ public class GestionMedicos {
 			// Desactivar autocommit para iniciar una transacción
 			con.setAutoCommit(false);
 
-			// Eliminar los registros asociados en otras tablas que rompen la integridad
-			// referencial
+			ResultSet resultSet;
+
+			// Comprobamos si existen medicos
+			PreparedStatement select_medico = con.prepareStatement("SELECT COUNT(*) FROM medico WHERE NIF = ?");
+			select_medico.setString(1, m_NIF_medico);
+			resultSet = select_medico.executeQuery();
+			// System.out.println(resultSet.next());
+			if (!resultSet.next()) {
+				throw new GestionMedicosException(2);
+			}
+			resultSet.close();
+			select_medico.close();
+
+			// Eliminar los registros de otras tablas
 			eliminarRegistrosAsociados(con, m_NIF_medico);
 
 			// Eliminar el médico de la tabla medico
@@ -249,17 +284,19 @@ public class GestionMedicos {
 
 			// Confirmar la transacción
 			con.commit();
-			System.out.println("Médico eliminado exitosamente.");
 
 		} catch (SQLException e) {
 			// En caso de error, hacer rollback de la transacción
 			if (con != null) {
 				con.rollback();
 			}
-			System.out.println("Error al eliminar el médico: " + e.getMessage());
+
+			if (e instanceof GestionMedicosException) {
+				throw (GestionMedicosException) e;
+			}
 
 		} finally {
-			// Cerrar la conexión y el statement
+
 			if (stmt != null) {
 				stmt.close();
 			}
@@ -277,19 +314,13 @@ public class GestionMedicos {
 		sacaId.setString(1, m_NIF_medico);
 		ResultSet resultSet = sacaId.executeQuery();
 
-		id_medico = resultSet.getInt("id_medico");
+		id_medico = resultSet.getInt(1);
 
 		// Eliminar registros asociados en la tabla "citas"
-		String sqlCitas = "DELETE FROM consultas WHERE id_medico = ?";
-		PreparedStatement stmtCitas = con.prepareStatement(sqlCitas);
+		String sqlConsultas = "DELETE FROM consultas WHERE id_medico = ?";
+		PreparedStatement stmtCitas = con.prepareStatement(sqlConsultas);
 		stmtCitas.setInt(1, id_medico);
 		stmtCitas.executeUpdate();
-
-		// Eliminar registros asociados en la tabla "pacientes"
-		String sqlPacientes = "DELETE FROM mwsico WHERE NIF = ?";
-		PreparedStatement stmtPacientes = con.prepareStatement(sqlPacientes);
-		stmtPacientes.setString(1, m_NIF_medico);
-		stmtPacientes.executeUpdate();
 
 	}
 
@@ -302,25 +333,23 @@ public class GestionMedicos {
 		creaTablas();
 
 		PoolDeConexiones pool = PoolDeConexiones.getInstance();
-		
+
 		SimpleDateFormat date = new SimpleDateFormat("dd/mm/yyyy");
 		Date parsed = null;
+		Date anulacion = null;
 
 		// Relatar caso por caso utilizando el siguiente procedure para inicializar los
 		// datos
 
 		CallableStatement cll_reinicia = null;
 		Connection conn = null;
-		
 
 		try {
-			// Reinicio filas
-
 			conn = pool.getConnection();
 			cll_reinicia = conn.prepareCall("{call inicializa_test}");
 			cll_reinicia.execute();
 			try {
-				
+
 				try {
 					parsed = date.parse("25/03/2022");
 				} catch (ParseException e) {
@@ -335,14 +364,10 @@ public class GestionMedicos {
 					System.out.println(e.getMessage());
 					System.out.println("Detecta medico no existe");
 				}
-//				cll_reinicia.close();
-				
+
 			}
-			
+
 			try {
-				
-//				cll_reinicia = conn.prepareCall("{call inicializa_test}");
-//				cll_reinicia.execute();
 				try {
 					parsed = date.parse("25/03/2022");
 				} catch (ParseException e) {
@@ -350,19 +375,16 @@ public class GestionMedicos {
 				}
 				java.sql.Date fecha = new java.sql.Date(parsed.getTime());
 				reservar_consulta("12345678A", "8766788Y", fecha);
-				System.out.println("NO detecta que el medico esta ocupado");				
-			} catch  (GestionMedicosException e){
+				System.out.println("NO detecta que el medico esta ocupado");
+			} catch (GestionMedicosException e) {
 				if (e.getErrorCode() == GestionMedicosException.MEDICO_OCUPADO) {
 					System.out.println(e.getMessage());
 					System.out.println("Detecta ocupado");
 				}
-				
+
 			}
-			
-try {
-				
-//				cll_reinicia = conn.prepareCall("{call inicializa_test}");
-//				cll_reinicia.execute();
+
+			try {
 				try {
 					parsed = date.parse("25/03/2022");
 				} catch (ParseException e) {
@@ -370,15 +392,51 @@ try {
 				}
 				java.sql.Date fecha = new java.sql.Date(parsed.getTime());
 				reservar_consulta("1278A", "8766788Y", fecha);
-				System.out.println("NO detecta que el paciente NO existe");				
-			} catch  (GestionMedicosException e){
+				System.out.println("NO detecta que el paciente NO existe");
+			} catch (GestionMedicosException e) {
 				if (e.getErrorCode() == GestionMedicosException.MEDICO_OCUPADO) {
 					System.out.println(e.getMessage());
 					System.out.println("Detecta paciente MAL");
 				}
-				
+
 			}
 			
+			try {
+				try {
+					parsed = date.parse("20/03/2022");
+					anulacion=date.parse("24/02/2023");
+				} catch (ParseException e) {
+					e.printStackTrace();
+				}
+				java.sql.Date fecha = new java.sql.Date(parsed.getTime());
+				anular_consulta("12345678Y", "8766788Y", fecha, anulacion);
+				System.out.println("NO detecta que la consulta NO existe");
+			} catch (GestionMedicosException e) {
+				if (e.getErrorCode() == GestionMedicosException.CONSULTA_NO_EXISTE) {
+					System.out.println(e.getMessage());
+					System.out.println("Detecta consulta NO existe");
+				}
+
+			}
+			
+			try {
+				try {
+					parsed = date.parse("24/03/2022");
+					anulacion=date.parse("23/03/2023");
+				} catch (ParseException e) {
+					e.printStackTrace();
+				}
+				java.sql.Date fecha = new java.sql.Date(parsed.getTime());
+				anular_consulta("12345678Y", "8766788Y", fecha, anulacion);
+				System.out.println("NO detecta que la consulta NO se puede anular");
+			} catch (GestionMedicosException e) {
+				if (e.getErrorCode() == GestionMedicosException.CONSULTA_NO_ANULA) {
+					System.out.println(e.getMessage());
+					System.out.println("Detecta consulta NO se puede anular");
+				}
+
+			}
+
 			
 		} catch (SQLException e) {
 			logger.error(e.getMessage());
